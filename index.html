@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Vistoria de Trafos</title>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+img{max-width:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+/* Layout: ferramenta de campo, mobile-first — resumo no topo, lista de trafos, ficha de vistoria em tela cheia */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --surface-2:#e8eceb; --fg:#17201e; --muted:#5b6965; --line:#d3dbd8;
+  --accent:#0f5c63; --accent-fg:#ffffff; --accent-soft:#dcebec;
+  --ok:#1d7a3e; --ok-soft:#ddf1e3; --bad:#b3261e; --bad-soft:#fbe3e1; --warn:#9a6200; --warn-soft:#fbefd6;
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1514; --surface:#18201f; --surface-2:#212b29; --fg:#e4ebe9; --muted:#97a6a2; --line:#2e3a38;
+  --accent:#5fb7bf; --accent-fg:#06201f; --accent-soft:#17383a;
+  --ok:#6cd38e; --ok-soft:#173523; --bad:#ff8a80; --bad-soft:#3d1a18; --warn:#f0bd5a; --warn-soft:#382a10; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1514; --surface:#18201f; --surface-2:#212b29; --fg:#e4ebe9; --muted:#97a6a2; --line:#2e3a38;
+  --accent:#5fb7bf; --accent-fg:#06201f; --accent-soft:#17383a;
+  --ok:#6cd38e; --ok-soft:#173523; --bad:#ff8a80; --bad-soft:#3d1a18; --warn:#f0bd5a; --warn-soft:#382a10; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.75rem;letter-spacing:.01em}
+.eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+.sub{color:var(--muted);margin:4px 0 0}
+button,.btn{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:9px 14px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:6px;justify-content:center;min-height:42px}
+button:focus-visible,.btn:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.ghost{background:transparent}
+
+/* resumo */
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:18px 0 10px}
+.sum{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;cursor:pointer;text-align:left;display:block;min-height:0}
+.sum[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.sum b{display:block;font-family:var(--display);font-size:1.6rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.sum span{font-size:.78rem;color:var(--muted)}
+.bar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden;display:flex;margin-bottom:16px}
+.bar i{display:block;height:100%}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filters input,.filters select{flex:1 1 180px;min-width:0;font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+
+/* lista */
+.list{display:flex;flex-direction:column;gap:8px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.row .plate{font-family:var(--mono);font-weight:600;font-size:1.15rem;letter-spacing:.02em}
+.row .where{color:var(--muted);font-size:.86rem;min-width:0}
+.row .acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.row .acts > *{flex:1 1 130px}
+.meta{font-size:.78rem;color:var(--muted)}
+.chip{font-size:.74rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:99px;white-space:nowrap;justify-self:end}
+.st-pendente{background:var(--surface-2);color:var(--muted)}
+.st-apto{background:var(--ok-soft);color:var(--ok)}
+.st-inapto{background:var(--bad-soft);color:var(--bad)}
+.st-revisar{background:var(--warn-soft);color:var(--warn)}
+.flags{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.flag{font-size:.74rem;border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--muted)}
+.flag.alert{border-color:var(--bad);color:var(--bad)}
+.empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
+.note{font-size:.84rem;color:var(--muted);margin-top:18px}
+.banner{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 12px;font-size:.88rem;margin-top:12px}
+
+/* ficha */
+.sheet{position:fixed;inset:0;background:var(--bg);overflow-y:auto;z-index:20}
+.sheet-head{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);z-index:2;padding-top:env(safe-area-inset-top,0px)}
+.sheet-head .in{max-width:760px;margin:0 auto;padding:10px 16px;display:flex;gap:10px;align-items:center}
+.sheet-head .t{flex:1;min-width:0}
+.sheet-head .t .plate{font-family:var(--mono);font-weight:600;font-size:1.1rem}
+.form{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:16px 120px;display:flex;flex-direction:column;gap:14px}
+.ref{background:var(--accent-soft);border-radius:var(--r);padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.ref div{min-width:0}
+.ref .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.ref .v{font-weight:600}
+.ref .v.mono{font-family:var(--mono);font-size:1.1rem}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.q.err{border-color:var(--bad)}
+.q h3{font-size:1.02rem;font-weight:600;display:flex;gap:8px;align-items:baseline}
+.q h3 .n{font-family:var(--mono);color:var(--muted);font-size:.8rem;font-weight:500}
+.q .help{font-size:.84rem;color:var(--muted);margin:-4px 0 0}
+.q .msg{font-size:.84rem;color:var(--bad);font-weight:500}
+.seg{display:flex;gap:8px}
+.seg label{flex:1;position:relative}
+.seg input{position:absolute;opacity:0;inset:0}
+.seg span{display:flex;justify-content:center;align-items:center;min-height:44px;border:1px solid var(--line);border-radius:8px;font-weight:600;cursor:pointer;background:var(--bg)}
+.seg input:checked + span{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.seg input:focus-visible + span{outline:2px solid var(--accent);outline-offset:2px}
+.seg.verdict input[value="apto"]:checked + span{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.seg.verdict input[value="inapto"]:checked + span{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.seg.verdict input[value="revisar"]:checked + span{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:.84rem;font-weight:500}
+.field input,.field textarea{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+.field input.mono{font-family:var(--mono)}
+textarea{min-height:90px;resize:vertical}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.ph{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--surface-2);max-width:100%}
+.ph img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.ph .x{position:absolute;top:4px;right:4px;min-height:0;padding:2px 8px;font-size:.8rem;background:var(--surface);border-radius:6px}
+.ph .busy{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--muted)}
+.add{aspect-ratio:1;border:1.5px dashed var(--line);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--accent);font-weight:600;font-size:.84rem;cursor:pointer;text-align:center;padding:6px;background:transparent;min-height:0}
+.add input{display:none}
+.add .plus{font-size:1.5rem;line-height:1}
+.subq{display:flex;flex-direction:column;gap:10px;padding-top:4px;border-top:1px dashed var(--line)}
+.footer{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));z-index:21}
+.footer .in{max-width:760px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.footer .status{flex:1;font-size:.84rem;color:var(--muted);min-width:0}
+.footer .primary{flex:0 0 auto;min-width:150px}
+.confirm{background:var(--warn-soft);color:var(--fg);border-radius:8px;padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.confirm span{flex:1 1 200px}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px}
+.export{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:14px;display:flex;flex-direction:column;gap:12px}
+.export h2{font-size:1.1rem}
+.export .opts{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.9rem}
+.export .opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.export .opts input{accent-color:var(--accent);width:18px;height:18px}
+.export .btns{display:flex;flex-wrap:wrap;gap:8px}
+.export .btns button{flex:1 1 150px}
+.export .prog{font-size:.86rem;color:var(--muted);min-height:1.2em}
+.fmt{font-family:var(--mono);font-size:.72rem;font-weight:600;padding:2px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:50;font-weight:500;max-width:calc(100% - 32px)}
+@media (max-width:560px){.summary{grid-template-columns:repeat(2,1fr)}h1{font-size:1.5rem}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap" id="main">
+  <div class="top">
+    <div>
+      <div class="eyebrow">Medição fiscal · prospecção de campo</div>
+      <h1>Vistoria de Trafos</h1>
+      <p class="sub">Abra o trafo no Maps, vá até o local e preencha a ficha com fotos.</p>
+    </div>
+    <button id="exportBtn" class="primary" hidden aria-expanded="false" aria-controls="exportPanel">Exportar relatório</button>
+  </div>
+
+  <section class="export" id="exportPanel" hidden aria-label="Exportar relatório">
+    <h2>Exportar relatório</h2>
+    <div class="opts" role="group" aria-label="Quais trafos">
+      <label><input type="radio" name="escopo" id="esc_todos" value="todos" checked> Todos os <span id="nTrafos">—</span> trafos</label>
+      <label><input type="radio" name="escopo" id="esc_filtro" value="filtro"> Somente o filtro atual da lista</label>
+      <label><input type="radio" name="escopo" id="esc_vist" value="vist"> Somente os já vistoriados</label>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="incFotos" checked> Incluir fotos (deixa o arquivo maior e mais demorado)</label>
+    </div>
+    <div class="btns">
+      <button type="button" id="xlsxBtn"><span class="fmt">XLSX</span> Baixar Excel</button>
+      <button type="button" id="pdfBtn"><span class="fmt">PDF</span> Baixar PDF</button>
+      <button type="button" id="csvBtn" class="ghost"><span class="fmt">CSV</span> Baixar CSV</button>
+    </div>
+    <div class="prog" id="exportProg" aria-live="polite"></div>
+  </section>
+
+  <div class="summary" id="summary"></div>
+  <div class="bar" id="bar" aria-hidden="true"></div>
+
+  <div class="filters">
+    <input id="q" type="search" placeholder="Buscar placa ou município" aria-label="Buscar placa ou município">
+    <select id="se" aria-label="Filtrar por subestação"></select>
+  </div>
+
+  <div class="list" id="list"></div>
+  <div id="banner"></div>
+  <p class="note">Critérios da vistoria: foto com qualidade; mais de 20 clientes no circuito; placa de referência igual à de campo; número do medidor se já houver medição fiscal; avaria ou defeito no trafo; trafo sem placa com evidência fotográfica; área de gambiarra; área rural; observações extras.</p>
+</div>
+
+<div class="sheet" id="sheet" hidden></div>
+<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="Foto ampliada"><button id="lbClose">Fechar</button></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+let TRAFOS = [];   // carregado da tabela 'trafos' no Supabase
+
+const STATUS = {pendente:'Pendente',apto:'Apto',inapto:'Não apto',revisar:'Revisar'};
+const PHOTO_CATS = [
+  {k:'geral', t:'Foto geral do trafo', h:'Trafo inteiro no poste, de perto e com boa luz. Obrigatório.'},
+  {k:'placa', t:'Placa de identificação', h:'Placa legível. Se o trafo não tiver placa, fotografe nitidamente o local onde ela deveria estar.'},
+  {k:'circuito', t:'Circuito / clientes ligados', h:'Rede e ramais saindo do trafo.'},
+  {k:'medidor', t:'Medidor fiscal', h:'Somente se já houver medição fiscal: número do medidor legível.'},
+  {k:'avaria', t:'Avaria ou defeito', h:'Somente se houver avaria ou defeito.'},
+  {k:'outras', t:'Outras fotos', h:'Gambiarra, acesso, área rural, etc.'}
+];
+const MIN_SIDE = 1000;   // foto com qualidade: lado maior mínimo em pixels
+const MAX_SIDE = 2200;   // compressão para envio
+
+let sb=null, canWrite=true;
+const CFG=window.VISTORIA_CONFIG||{};
+const BUCKET='fotos';
+function purl(path){return CFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/public/'+BUCKET+'/'+path.split('/').map(encodeURIComponent).join('/')}
+const toRow=(f,t)=>({placa:t.placa,tem_placa:f.temPlaca||null,placa_confere:f.placaConfere||null,placa_campo:f.placaCampo||null,mais_20:f.mais20||null,qtd_clientes:f.qtdClientes||null,medicao:f.medicao||null,medidor:f.medidor||null,avaria:f.avaria||null,avaria_desc:f.avariaDesc||null,defeito:f.defeito||null,defeito_desc:f.defeitoDesc||null,gambiarra:f.gambiarra||null,rural:f.rural||null,obs:f.obs||null,prospector:f.prospector||null,parecer:f.parecer||null,fotos:f.photos});
+const fromRow=r=>({temPlaca:r.tem_placa||'',placaConfere:r.placa_confere||'',placaCampo:r.placa_campo||'',mais20:r.mais_20||'',qtdClientes:r.qtd_clientes||'',medicao:r.medicao||'',medidor:r.medidor||'',avaria:r.avaria||'',avariaDesc:r.avaria_desc||'',defeito:r.defeito||'',defeitoDesc:r.defeito_desc||'',gambiarra:r.gambiarra||'',rural:r.rural||'',obs:r.obs||'',prospector:r.prospector||'',parecer:r.parecer||'',photos:Array.isArray(r.fotos)?r.fotos:[],updatedAt:r.updated_at});
+let vistorias = {};       // id -> data
+let loaded=false;
+let filterStatus='todos';
+let current=null;         // {trafo, form, dirty}
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+
+function statusOf(t){const v=vistorias[t.id];return v&&v.parecer?v.parecer:'pendente'}
+function fmtDate(iso){if(!iso)return'';const d=new Date(iso);return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+
+/* ---------- lista ---------- */
+function renderSummary(){
+  const c={todos:TRAFOS.length,pendente:0,apto:0,inapto:0,revisar:0};
+  TRAFOS.forEach(t=>c[statusOf(t)]++);
+  const items=[['todos','Trafos na base'],['pendente','Pendentes'],['apto','Aptos'],['inapto','Não aptos']];
+  if(c.revisar) items.push(['revisar','Revisar']);
+  $('#summary').style.gridTemplateColumns = items.length>4 && innerWidth>560 ? 'repeat(5,1fr)' : '';
+  $('#summary').innerHTML=items.map(([k,l])=>`<button class="sum" data-f="${k}" aria-pressed="${filterStatus===k}"><b>${c[k]}</b><span>${l}</span></button>`).join('');
+  const n=TRAFOS.length||1;
+  $('#bar').innerHTML=`<i style="width:${c.apto/n*100}%;background:var(--ok)"></i><i style="width:${c.inapto/n*100}%;background:var(--bad)"></i><i style="width:${c.revisar/n*100}%;background:var(--warn)"></i>`;
+}
+function flagsOf(v){
+  if(!v) return '';
+  const f=[];
+  if(v.temPlaca==='nao') f.push(['Sem placa',1]);
+  if(v.placaConfere==='nao') f.push(['Placa diverge',1]);
+  if(v.mais20==='sim') f.push(['+20 clientes',0]);
+  if(v.mais20==='nao') f.push(['≤20 clientes',1]);
+  if(v.medicao==='sim') f.push(['Medidor '+(v.medidor||''),0]);
+  if(v.avaria==='sim') f.push(['Avaria',1]);
+  if(v.defeito==='sim') f.push(['Defeito',1]);
+  if(v.gambiarra==='sim') f.push(['Gambiarra',1]);
+  if(v.rural==='sim') f.push(['Rural',0]);
+  const n=(v.photos||[]).length; f.push([n+' foto'+(n===1?'':'s'),0]);
+  return `<div class="flags">${f.map(([t,a])=>`<span class="flag${a?' alert':''}">${esc(t)}</span>`).join('')}</div>`;
+}
+function renderList(){
+  renderSummary();
+  const q=$('#q').value.trim().toLowerCase(), se=$('#se').value;
+  const rows=TRAFOS.filter(t=>(filterStatus==='todos'||statusOf(t)===filterStatus)&&(!se||t.se===se)&&(!q||(t.placa+' '+t.mun+' '+t.se).toLowerCase().includes(q)));
+  if(!rows.length){$('#list').innerHTML=`<div class="empty">${TRAFOS.length?'Nenhum trafo com esse filtro.':'Aguardando a base de trafos do banco…'}</div>`;return}
+  $('#list').innerHTML=rows.map(t=>{
+    const s=statusOf(t), v=vistorias[t.id];
+    return `<div class="row">
+      <div style="min-width:0"><div class="plate">${esc(t.placa)}</div><div class="where">${esc(t.mun)} · SE ${esc(t.se)}</div>
+      ${v?`<div class="meta">Vistoriado por ${esc(v.prospector||'—')} em ${esc(fmtDate(v.updatedAt))}</div>`:''}</div>
+      <span class="chip st-${s}">${STATUS[s]}</span>
+      ${flagsOf(v)}
+      <div class="acts">
+        <a class="btn" href="${esc(t.maps)}" target="_blank" rel="noopener">Abrir no Maps ↗</a>
+        <button class="${v?'':'primary'}" data-open="${esc(t.id)}">${v?(canWrite?'Ver / editar vistoria':'Ver vistoria'):(canWrite?'Vistoriar':'Ver ficha')}</button>
+      </div></div>`}).join('');
+}
+function initFilterOptions(){
+  const ses=[...new Set(TRAFOS.map(t=>t.se))].sort();
+  $('#se').innerHTML='<option value="">Todas as subestações</option>'+ses.map(s=>`<option>${esc(s)}</option>`).join('');
+}
+function initFilters(){
+  initFilterOptions();
+  $('#q').addEventListener('input',renderList);
+  $('#se').addEventListener('change',renderList);
+  $('#summary').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;filterStatus=filterStatus===b.dataset.f?'todos':b.dataset.f;renderList()});
+  $('#list').addEventListener('click',e=>{const b=e.target.closest('[data-open]');if(b)openSheet(b.dataset.open)});
+}
+
+/* ---------- ficha ---------- */
+function blankForm(){return {temPlaca:'',placaConfere:'',placaCampo:'',mais20:'',qtdClientes:'',medicao:'',medidor:'',avaria:'',avariaDesc:'',defeito:'',defeitoDesc:'',gambiarra:'',rural:'',obs:'',prospector:lsGet('prospector')||'',parecer:'',photos:[]}}
+function seg(name,val,opts=[['sim','Sim'],['nao','Não']],cls=''){
+  return `<div class="seg ${cls}" role="radiogroup">${opts.map(([v,l])=>`<label><input type="radio" id="${name}_${v}" name="${name}" value="${v}" ${val===v?'checked':''} ${canWrite?'':'disabled'}><span>${l}</span></label>`).join('')}</div>`;
+}
+function photoBlock(cat){
+  return `<div class="q" id="q_ph_${cat.k}"><h3>${esc(cat.t)}</h3><p class="help">${esc(cat.h)}</p><div class="photos" data-cat="${cat.k}"></div><div class="msg" hidden></div></div>`;
+}
+function openSheet(id){
+  const t=TRAFOS.find(x=>x.id===id); if(!t) return;
+  const f=Object.assign(blankForm(), JSON.parse(JSON.stringify(vistorias[id]||{})));
+  current={trafo:t,form:f,dirty:false,uploading:0,baseUpdatedAt:(vistorias[id]||{}).updatedAt||null};
+  const dr=readDraft(t.placa); let restored=false;
+  if(dr&&dr.form&&(!vistorias[id]||dr.at>new Date(vistorias[id].updatedAt).getTime())){dr.form.photos=(dr.form.photos||[]).filter(p=>!p.pending);Object.assign(f,dr.form);current.dirty=true;restored=true}
+  const ro=canWrite?'':'disabled';
+  let n=0; const N=()=>String(++n).padStart(2,'0');
+  $('#sheet').innerHTML=`
+  <div class="sheet-head"><div class="in">
+    <button class="ghost" id="closeSheet" aria-label="Voltar para a lista">← Lista</button>
+    <div class="t"><div class="plate">${esc(t.placa)}</div><div class="meta">${esc(t.mun)} · SE ${esc(t.se)}</div></div>
+    ${vistorias[id]?`<button type="button" id="onePdf" title="Baixar PDF desta vistoria"><span class="fmt">PDF</span></button>`:''}
+    <a class="btn" href="${esc(t.maps)}" target="_blank" rel="noopener">Maps ↗</a>
+  </div></div>
+  <form class="form" id="vform" novalidate>
+    <div id="confirmBox">${restored?`<div class="banner" style="margin:0">Rascunho não salvo recuperado deste aparelho. Revise e toque em <b>Salvar vistoria</b>.</div>`:''}</div>
+    <div class="ref">
+      <div><div class="k">Placa de referência</div><div class="v mono">${esc(t.placa)}</div></div>
+      <div><div class="k">Município</div><div class="v">${esc(t.mun)}</div></div>
+      <div><div class="k">Subestação</div><div class="v">${esc(t.se)}</div></div>
+    </div>
+    ${!canWrite?`<div class="banner">Você está vendo esta ficha somente para leitura. Peça acesso de edição a quem compartilhou o link para preencher vistorias.</div>`:''}
+
+    <div class="q" id="q_temPlaca"><h3><span class="n">${N()}</span>O trafo tem placa de identificação?</h3>${seg('temPlaca',f.temPlaca)}
+      <div class="subq" data-show="temPlaca=nao" hidden><p class="help" style="margin:0">Aponte com evidência fotográfica clara e nítida na seção “Placa de identificação” abaixo.</p></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_placaConfere" data-show="temPlaca=sim" hidden><h3><span class="n">${N()}</span>A placa em campo é a mesma da referência <span style="font-family:var(--mono)">${esc(t.placa)}</span>?</h3>${seg('placaConfere',f.placaConfere)}
+      <div class="subq" data-show="placaConfere=nao" hidden><div class="field"><label for="placaCampo">Placa encontrada em campo</label><input id="placaCampo" class="mono" value="${esc(f.placaCampo)}" ${ro} autocomplete="off"></div></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_mais20"><h3><span class="n">${N()}</span>Há mais de 20 clientes ligados no circuito do trafo?</h3>${seg('mais20',f.mais20)}
+      <div class="field"><label for="qtdClientes">Quantidade aproximada de clientes (opcional)</label><input id="qtdClientes" inputmode="numeric" value="${esc(f.qtdClientes)}" ${ro}></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_medicao"><h3><span class="n">${N()}</span>Já existe medição fiscal instalada?</h3>${seg('medicao',f.medicao)}
+      <div class="subq" data-show="medicao=sim" hidden><div class="field"><label for="medidor">Número do medidor</label><input id="medidor" class="mono" value="${esc(f.medidor)}" ${ro} autocomplete="off"></div></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_avaria"><h3><span class="n">${N()}</span>Há avaria no trafo?</h3>${seg('avaria',f.avaria)}
+      <div class="subq" data-show="avaria=sim" hidden><div class="field"><label for="avariaDesc">Descreva a avaria</label><textarea id="avariaDesc" ${ro}>${esc(f.avariaDesc)}</textarea></div></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_defeito"><h3><span class="n">${N()}</span>Há defeito no trafo?</h3>${seg('defeito',f.defeito)}
+      <div class="subq" data-show="defeito=sim" hidden><div class="field"><label for="defeitoDesc">Descreva o defeito</label><textarea id="defeitoDesc" ${ro}>${esc(f.defeitoDesc)}</textarea></div></div>
+      <div class="msg" hidden></div></div>
+
+    <div class="q" id="q_gambiarra"><h3><span class="n">${N()}</span>É área de gambiarra?</h3>${seg('gambiarra',f.gambiarra)}<div class="msg" hidden></div></div>
+    <div class="q" id="q_rural"><h3><span class="n">${N()}</span>É área rural?</h3>${seg('rural',f.rural)}<div class="msg" hidden></div></div>
+
+    <div class="eyebrow" style="margin-top:6px">Fotos — use a câmera traseira, com boa luz e foco. Fotos abaixo de ${MIN_SIDE}px são recusadas.</div>
+    ${PHOTO_CATS.map(photoBlock).join('')}
+
+    <div class="q"><h3><span class="n">${N()}</span>Observações extras</h3><div class="field"><textarea id="obs" ${ro} aria-label="Observações extras">${esc(f.obs)}</textarea></div></div>
+
+    <div class="q" id="q_prospector"><h3><span class="n">${N()}</span>Prospector responsável</h3><div class="field"><input id="prospector" value="${esc(f.prospector)}" ${ro} placeholder="Seu nome" autocomplete="name" aria-label="Nome do prospector"></div><div class="msg" hidden></div></div>
+
+    <div class="q" id="q_parecer"><h3><span class="n">${N()}</span>Parecer: o trafo está apto para a medição fiscal?</h3>
+      ${seg('parecer',f.parecer,[['apto','Apto'],['inapto','Não apto'],['revisar','Revisar']],'verdict')}
+      <p class="help" id="hint" style="margin:0"></p><div class="msg" hidden></div></div>
+  </form>
+  ${canWrite?`<div class="footer"><div class="in"><div class="status" id="saveStatus">${vistorias[id]?'Última gravação: '+esc(fmtDate(vistorias[id].updatedAt)):'Ainda não vistoriado'}</div><button class="primary" id="saveBtn">Salvar vistoria</button></div></div>`:''}`;
+  $('#sheet').hidden=false; $('#main').hidden=true; $('#sheet').scrollTop=0;
+  applyShow(); renderPhotos(); updateHint();
+  const form=$('#vform');
+  form.addEventListener('change',onFormChange);
+  form.addEventListener('input',onFormChange);
+  form.addEventListener('submit',e=>e.preventDefault());
+  $('#closeSheet').addEventListener('click',tryClose);
+  const op=$('#onePdf'); if(op) op.addEventListener('click',async()=>{
+    if(current.dirty){toast('Salve a vistoria antes de gerar o PDF.');return}
+    op.disabled=true; toast('Gerando PDF…');
+    try{await exportPdf([t],{fotos:true,single:true},()=>{})}catch(e){toast(errMsg(e))}
+    op.disabled=false;
+  });
+  if(canWrite) $('#saveBtn').addEventListener('click',save);
+}
+function onFormChange(e){
+  const el=e.target; if(!current||!el.name&&!el.id) return;
+  if(el.type==='file') return;
+  const f=current.form;
+  if(el.type==='radio') f[el.name]=el.value; else if(el.id in f) f[el.id]=el.value;
+  current.dirty=true; applyShow(); updateHint(); saveDraft();
+  const q=el.closest('.q'); if(q){q.classList.remove('err');const m=q.querySelector(':scope > .msg');if(m)m.hidden=true}
+}
+function saveDraft(){if(!current)return;try{localStorage.setItem('rascunho:'+current.trafo.placa,JSON.stringify({at:Date.now(),form:current.form}))}catch(e){}}
+function clearDraft(placa){try{localStorage.removeItem('rascunho:'+placa)}catch(e){}}
+function readDraft(placa){try{return JSON.parse(localStorage.getItem('rascunho:'+placa)||'null')}catch(e){return null}}
+function applyShow(){
+  document.querySelectorAll('#sheet [data-show]').forEach(n=>{const [k,v]=n.dataset.show.split('=');n.hidden=current.form[k]!==v});
+}
+function suggest(f){
+  if(f.medicao==='sim') return ['inapto','Já existe medição fiscal: normalmente não precisa de novo medidor.'];
+  if(f.mais20==='nao') return ['inapto','Circuito com 20 clientes ou menos.'];
+  if(f.temPlaca==='nao'||f.placaConfere==='nao'||f.avaria==='sim'||f.defeito==='sim') return ['revisar','Há divergência de placa, falta de placa, avaria ou defeito.'];
+  if(f.mais20==='sim'&&f.medicao==='nao'&&f.placaConfere==='sim') return ['apto','Placa confere, mais de 20 clientes e sem medição fiscal.'];
+  return [null,''];
+}
+function updateHint(){
+  const [s,why]=suggest(current.form);
+  const h=$('#hint'); if(!h) return;
+  h.textContent = s ? `Sugestão pelas respostas: ${STATUS[s]} — ${why} A decisão final é sua.` : 'Responda as perguntas acima para ver uma sugestão.';
+}
+
+/* ---------- fotos ---------- */
+function renderPhotos(){
+  PHOTO_CATS.forEach(c=>{
+    const box=document.querySelector(`#sheet .photos[data-cat="${c.k}"]`); if(!box) return;
+    const list=current.form.photos.filter(p=>p.cat===c.k);
+    box.innerHTML=list.map(p=>`<div class="ph">${p.pending?`<div class="busy">Enviando…</div>`:`<img src="${esc(purl(p.id))}" alt="${esc(c.t)}" data-zoom="${esc(p.id)}" loading="lazy">${canWrite?`<button type="button" class="x" data-del="${esc(p.id)}" aria-label="Remover foto">✕</button>`:''}`}</div>`).join('')
+      + (canWrite&&sb?`<label class="add"><input type="file" accept="image/*" capture="environment" multiple data-cat="${c.k}"><span class="plus">+</span>Tirar / anexar foto</label>`:'')
+      + (!list.length&&!(canWrite&&sb)?`<span class="meta">Sem fotos.</span>`:'');
+  });
+  document.querySelectorAll('#sheet input[type=file]').forEach(i=>i.onchange=onPick);
+  document.querySelectorAll('#sheet [data-del]').forEach(b=>b.onclick=()=>{current.form.photos=current.form.photos.filter(p=>p.id!==b.dataset.del);current.dirty=true;saveDraft();renderPhotos()});
+  document.querySelectorAll('#sheet [data-zoom]').forEach(i=>i.onclick=()=>{$('#lbImg').src=purl(i.dataset.zoom);$('#lightbox').hidden=false});
+}
+function loadImage(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res({im,u});im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('img'))};im.src=u})}
+async function prepare(file){
+  const {im,u}=await loadImage(file);
+  const w=im.naturalWidth,h=im.naturalHeight;
+  if(Math.max(w,h)<MIN_SIDE){URL.revokeObjectURL(u);throw {code:'lowres',w,h}}
+  const s=Math.min(1,MAX_SIDE/Math.max(w,h));
+  const c=document.createElement('canvas');c.width=Math.round(w*s);c.height=Math.round(h*s);
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.88));
+  return {blob,w:c.width,h:c.height};
+}
+async function onPick(e){
+  const cat=e.target.dataset.cat, files=[...e.target.files]; e.target.value='';
+  const q=document.getElementById('q_ph_'+cat), msg=q.querySelector('.msg');
+  for(const file of files){
+    const tmp={id:'tmp'+Math.random().toString(36).slice(2),cat,pending:true};
+    current.form.photos.push(tmp); current.uploading++; renderPhotos(); setStatus();
+    try{
+      const p=await prepare(file);
+      const path=`${current.trafo.placa.replace(/[^A-Za-z0-9_.-]/g,'_')}/${cat}_${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+      const up=await sb.storage.from(BUCKET).upload(path,p.blob,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
+      if(up.error) throw up.error;
+      Object.assign(tmp,{id:path,pending:false,w:p.w,h:p.h,at:new Date().toISOString()}); delete tmp.pending;
+      current.dirty=true; saveDraft(); msg.hidden=true; q.classList.remove('err');
+    }catch(err){
+      current.form.photos=current.form.photos.filter(x=>x!==tmp);
+      msg.hidden=false;
+      msg.textContent = err&&err.code==='lowres' ? `Foto com baixa resolução (${err.w}×${err.h}). Tire outra com a câmera do celular.`
+        : err&&err.code==='too_large' ? 'Foto grande demais. Tente novamente.'
+        : err&&err.code==='rate_limited' ? 'Muitos envios seguidos. Aguarde alguns segundos e tente de novo.'
+        : 'Não foi possível enviar a foto. Verifique a conexão e tente novamente.';
+    }finally{current.uploading--; renderPhotos(); setStatus()}
+  }
+}
+function setStatus(txt){const s=$('#saveStatus');if(!s)return;s.textContent=txt||(current.uploading?`Enviando ${current.uploading} foto(s)…`:(current.dirty?'Alterações não salvas':s.textContent))}
+
+/* ---------- validação e gravação ---------- */
+function validate(f){
+  const errs=[];
+  const need=(k,m)=>{if(!f[k]) errs.push(['q_'+k,m])};
+  need('temPlaca','Informe se o trafo tem placa.');
+  if(f.temPlaca==='sim'){need('placaConfere','Informe se a placa confere.'); if(f.placaConfere==='nao'&&!f.placaCampo.trim()) errs.push(['q_placaConfere','Digite a placa encontrada em campo.'])}
+  need('mais20','Informe se há mais de 20 clientes.');
+  need('medicao','Informe se já existe medição fiscal.');
+  if(f.medicao==='sim'&&!f.medidor.trim()) errs.push(['q_medicao','Digite o número do medidor.']);
+  need('avaria','Informe se há avaria.'); if(f.avaria==='sim'&&!f.avariaDesc.trim()) errs.push(['q_avaria','Descreva a avaria.']);
+  need('defeito','Informe se há defeito.'); if(f.defeito==='sim'&&!f.defeitoDesc.trim()) errs.push(['q_defeito','Descreva o defeito.']);
+  need('gambiarra','Informe se é área de gambiarra.');
+  need('rural','Informe se é área rural.');
+  const has=c=>f.photos.some(p=>p.cat===c);
+  if(!has('geral')) errs.push(['q_ph_geral','Envie pelo menos uma foto geral do trafo.']);
+  if(f.temPlaca==='nao'&&!has('placa')) errs.push(['q_ph_placa','Trafo sem placa: envie foto clara e nítida como evidência.']);
+  if(f.temPlaca==='sim'&&!has('placa')) errs.push(['q_ph_placa','Envie a foto da placa de identificação.']);
+  if(f.medicao==='sim'&&!has('medidor')) errs.push(['q_ph_medidor','Envie a foto do medidor fiscal.']);
+  if((f.avaria==='sim'||f.defeito==='sim')&&!has('avaria')) errs.push(['q_ph_avaria','Envie foto da avaria ou defeito.']);
+  if(!f.prospector.trim()) errs.push(['q_prospector','Digite seu nome.']);
+  need('parecer','Escolha o parecer.');
+  return errs;
+}
+async function save(){
+  if(!current) return;
+  if(current.uploading){toast('Aguarde o envio das fotos terminar.');return}
+  document.querySelectorAll('#sheet .q').forEach(q=>{q.classList.remove('err');const m=q.querySelector(':scope > .msg');if(m)m.hidden=true});
+  const f=current.form, errs=validate(f);
+  if(errs.length){
+    errs.forEach(([id,m])=>{const q=document.getElementById(id);if(!q)return;q.classList.add('err');const ms=q.querySelector(':scope > .msg');if(ms){ms.hidden=false;ms.textContent=m}});
+    const first=document.getElementById(errs[0][0]); first&&first.scrollIntoView({behavior:'smooth',block:'center'});
+    $('#saveStatus').textContent=`${errs.length} item(ns) pendente(s) na ficha`;
+    return;
+  }
+  const btn=$('#saveBtn'); btn.disabled=true; btn.textContent='Salvando…';
+  const t=current.trafo;
+  try{
+    const chk=await sb.from('vistorias').select('updated_at,prospector').eq('placa',t.placa).maybeSingle();
+    if(chk.error) throw chk.error;
+    const remote=chk.data&&chk.data.updated_at;
+    if(remote&&remote!==current.baseUpdatedAt&&!current.forceSave){
+      btn.disabled=false; btn.textContent='Salvar mesmo assim'; current.forceSave=true;
+      $('#saveStatus').textContent=`Atenção: ${chk.data.prospector||'outra pessoa'} salvou esta ficha em ${fmtDate(remote)} depois que você abriu. Salvar agora substitui a versão dela (a anterior fica no histórico).`;
+      return;
+    }
+    const row=toRow({...f,photos:f.photos.filter(p=>!p.pending).map(p=>({id:p.id,cat:p.cat,w:p.w||null,h:p.h||null,at:p.at||null}))},t);
+    const r=await sb.from('vistorias').upsert(row,{onConflict:'placa'}).select().single();
+    if(r.error) throw r.error;
+    lsSet('prospector',f.prospector.trim()); clearDraft(t.placa);
+    vistorias[t.id]=fromRow(r.data); current.dirty=false;
+    toast('Vistoria salva'); closeSheet();
+  }catch(err){
+    console.error(err);
+    btn.disabled=false; btn.textContent='Salvar vistoria';
+    $('#saveStatus').textContent = navigator.onLine===false ? 'Sem internet. O rascunho ficou guardado neste aparelho; salve quando o sinal voltar.' : 'Não foi possível salvar. O rascunho ficou guardado neste aparelho; tente de novo.';
+  }
+}
+function tryClose(){
+  if(current&&(current.dirty||current.uploading)&&canWrite){
+    $('#confirmBox').innerHTML=`<div class="confirm"><span>Há alterações não salvas nesta ficha. Elas ficam guardadas como rascunho neste aparelho se você sair.</span><button type="button" id="leave">Sair e manter rascunho</button><button type="button" id="discard">Descartar</button><button type="button" class="primary" id="keep">Continuar editando</button></div>`;
+    $('#sheet').scrollTop=0;
+    $('#leave').onclick=closeSheet; $('#discard').onclick=()=>{clearDraft(current.trafo.placa);closeSheet()}; $('#keep').onclick=()=>$('#confirmBox').innerHTML='';
+    return;
+  }
+  closeSheet();
+}
+function closeSheet(){current=null;$('#sheet').hidden=true;$('#sheet').innerHTML='';$('#main').hidden=false;renderList()}
+
+/* ---------- exportação ---------- */
+const LIBS={
+  xlsx:['https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'],
+  pdf:['https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js','https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js']
+};
+const _libP={};
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej({code:'lib'});document.head.appendChild(s)})}
+function loadLib(k){return _libP[k]||(_libP[k]=LIBS[k].reduce((p,src)=>p.then(()=>loadScript(src)),Promise.resolve()).catch(e=>{delete _libP[k];throw e}))}
+function errMsg(e){return e&&e.code==='lib'?'Não foi possível carregar o gerador do arquivo. Verifique a internet e tente de novo.':'Não foi possível gerar o arquivo. Tente de novo.'}
+const YN=v=>v==='sim'?'Sim':v==='nao'?'Não':'';
+const CAT_NAME=Object.fromEntries(PHOTO_CATS.map(c=>[c.k,c.t]));
+const stamp=()=>{const d=new Date();const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`};
+const nowBR=()=>fmtDate(new Date().toISOString());
+
+function filteredTrafos(){
+  const q=$('#q').value.trim().toLowerCase(), se=$('#se').value;
+  return TRAFOS.filter(t=>(filterStatus==='todos'||statusOf(t)===filterStatus)&&(!se||t.se===se)&&(!q||(t.placa+' '+t.mun+' '+t.se).toLowerCase().includes(q)));
+}
+function scopeTrafos(){
+  const s=(document.querySelector('input[name=escopo]:checked')||{}).value;
+  if(s==='filtro') return filteredTrafos();
+  if(s==='vist') return TRAFOS.filter(t=>vistorias[t.id]);
+  return TRAFOS.slice();
+}
+const COLS=[
+  ['TRAFO_PLACA',t=>t.placa,14],['MUNICIPIO',t=>t.mun,22],['NOME_SUBESTACAO',t=>t.se,20],['STATUS',t=>STATUS[statusOf(t)],11],
+  ['TEM_PLACA',(t,v)=>YN(v.temPlaca),11],['PLACA_CONFERE',(t,v)=>YN(v.placaConfere),14],['PLACA_EM_CAMPO',(t,v)=>v.placaCampo||'',16],
+  ['MAIS_20_CLIENTES',(t,v)=>YN(v.mais20),16],['QTD_CLIENTES',(t,v)=>v.qtdClientes||'',13],
+  ['MEDICAO_FISCAL',(t,v)=>YN(v.medicao),14],['NUM_MEDIDOR',(t,v)=>v.medidor||'',16],
+  ['AVARIA',(t,v)=>YN(v.avaria),9],['DESC_AVARIA',(t,v)=>v.avariaDesc||'',30],['DEFEITO',(t,v)=>YN(v.defeito),9],['DESC_DEFEITO',(t,v)=>v.defeitoDesc||'',30],
+  ['AREA_GAMBIARRA',(t,v)=>YN(v.gambiarra),15],['AREA_RURAL',(t,v)=>YN(v.rural),11],['OBSERVACOES',(t,v)=>v.obs||'',40],
+  ['PROSPECTOR',(t,v)=>v.prospector||'',20],['DATA_VISTORIA',(t,v)=>v.updatedAt?fmtDate(v.updatedAt):'',17],['QTD_FOTOS',(t,v)=>(v.photos||[]).length,10],
+  ['LINK_MAPS',t=>t.maps,42]
+];
+function countBy(list){const c={total:list.length,pendente:0,apto:0,inapto:0,revisar:0};list.forEach(t=>c[statusOf(t)]++);return c}
+
+/* fotos: busca o arquivo salvo e reduz para caber no relatório */
+async function photoData(id,max){
+  const r=await fetch(purl(id)); if(!r.ok) throw new Error('foto');
+  const b=await r.blob(); const u=URL.createObjectURL(b);
+  try{
+    const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=u});
+    const s=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+    const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*s);c.height=Math.round(im.naturalHeight*s);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    return {data:c.toDataURL('image/jpeg',0.82),w:c.width,h:c.height};
+  }finally{URL.revokeObjectURL(u)}
+}
+function allPhotos(list){const out=[];list.forEach(t=>{const v=vistorias[t.id];(v&&v.photos||[]).forEach(p=>out.push({t,p}))});return out}
+
+async function saveFile(filename,data,type){
+  const u=URL.createObjectURL(new Blob([data],{type}));
+  const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),4000);return true;
+}
+
+/* ----- CSV ----- */
+async function exportCsv(list){
+  const q=s=>{s=String(s??'');return /[;"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  const rows=list.map(t=>{const v=vistorias[t.id]||{};return COLS.map(([,f])=>q(f(t,v))).join(';')});
+  return saveFile(`vistoria-trafos_${stamp()}.csv`,'﻿'+[COLS.map(c=>c[0]).join(';'),...rows].join('\r\n'),'text/csv');
+}
+
+/* ----- Excel ----- */
+const XL={head:'FF0F5C63',headFg:'FFFFFFFF',apto:'FFDDF1E3',inapto:'FFFBE3E1',revisar:'FFFBEFD6',pendente:'FFECEFEE',line:'FFD3DBD8'};
+async function exportXlsx(list,opt,prog){
+  prog('Carregando gerador de Excel…'); await loadLib('xlsx');
+  const wb=new ExcelJS.Workbook(); wb.creator='Vistoria de Trafos'; wb.created=new Date();
+  const border={top:{style:'thin',color:{argb:XL.line}},left:{style:'thin',color:{argb:XL.line}},bottom:{style:'thin',color:{argb:XL.line}},right:{style:'thin',color:{argb:XL.line}}};
+  const styleHead=row=>{row.eachCell(c=>{c.font={bold:true,color:{argb:XL.headFg}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:XL.head}};c.alignment={vertical:'middle',horizontal:'center',wrapText:true};c.border=border});row.height=30};
+
+  /* Resumo */
+  const rs=wb.addWorksheet('Resumo',{views:[{showGridLines:false}]});
+  rs.columns=[{width:26},{width:12},{width:12},{width:12},{width:12},{width:12}];
+  rs.getCell('A1').value='Relatório de Vistoria de Trafos — Medição Fiscal'; rs.getCell('A1').font={bold:true,size:16,color:{argb:XL.head}};
+  rs.getCell('A2').value='Gerado em '+nowBR()+' · '+list.length+' trafo(s) no relatório'; rs.getCell('A2').font={color:{argb:'FF5B6965'}};
+  const c=countBy(list);
+  const sumRows=[['Situação','Quantidade'],['Pendentes',c.pendente],['Aptos',c.apto],['Não aptos',c.inapto],['Revisar',c.revisar],['Total',c.total]];
+  sumRows.forEach((r,i)=>{const row=rs.getRow(4+i);row.values=r;if(i===0)styleHead(row);else row.eachCell(x=>{x.border=border});if(i===sumRows.length-1)row.font={bold:true}});
+  const fills=[null,XL.pendente,XL.apto,XL.inapto,XL.revisar];
+  for(let i=1;i<=4;i++) rs.getCell('A'+(4+i)).fill={type:'pattern',pattern:'solid',fgColor:{argb:fills[i]}};
+  const start=4+sumRows.length+2;
+  rs.getRow(start).values=['Subestação','Trafos','Pendentes','Aptos','Não aptos','Revisar']; styleHead(rs.getRow(start));
+  const ses=[...new Set(list.map(t=>t.se))].sort();
+  ses.forEach((s,i)=>{const cc=countBy(list.filter(t=>t.se===s));const row=rs.getRow(start+1+i);row.values=[s,cc.total,cc.pendente,cc.apto,cc.inapto,cc.revisar];row.eachCell(x=>{x.border=border});for(let k=2;k<=6;k++)row.getCell(k).alignment={horizontal:'center'}});
+
+  /* Vistorias */
+  const ws=wb.addWorksheet('Vistorias',{views:[{state:'frozen',ySplit:1,xSplit:1}]});
+  ws.columns=COLS.map(([h,,w])=>({header:h,width:w}));
+  styleHead(ws.getRow(1));
+  const stCol=COLS.findIndex(x=>x[0]==='STATUS')+1, mapCol=COLS.length;
+  list.forEach(t=>{
+    const v=vistorias[t.id]||{};
+    const row=ws.addRow(COLS.map(([,f])=>f(t,v)));
+    row.alignment={vertical:'top',wrapText:true};
+    row.eachCell({includeEmpty:true},x=>{x.border=border});
+    row.getCell(1).font={bold:true,name:'Consolas'};
+    const st=row.getCell(stCol); st.fill={type:'pattern',pattern:'solid',fgColor:{argb:XL[statusOf(t)]}}; st.font={bold:true};
+    const m=row.getCell(mapCol); m.value={text:t.maps,hyperlink:t.maps}; m.font={color:{argb:'FF0F5C63'},underline:true};
+    ['TEM_PLACA','PLACA_CONFERE','AVARIA','DEFEITO','AREA_GAMBIARRA'].forEach(k=>{
+      const i=COLS.findIndex(x=>x[0]===k)+1, val=row.getCell(i).value;
+      if((k==='TEM_PLACA'||k==='PLACA_CONFERE')?val==='Não':val==='Sim') row.getCell(i).font={bold:true,color:{argb:'FFB3261E'}};
+    });
+  });
+  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:COLS.length}};
+
+  /* Fotos */
+  if(opt.fotos){
+    const ph=allPhotos(list);
+    if(ph.length){
+      const fs=wb.addWorksheet('Fotos',{views:[{state:'frozen',ySplit:1}]});
+      fs.columns=[{header:'TRAFO_PLACA',width:14},{header:'MUNICIPIO',width:22},{header:'CATEGORIA',width:26},{header:'DATA_FOTO',width:17},{header:'FOTO',width:40}];
+      styleHead(fs.getRow(1));
+      for(let i=0;i<ph.length;i++){
+        prog(`Incluindo fotos no Excel… ${i+1} de ${ph.length}`);
+        const {t,p}=ph[i]; const row=fs.addRow([t.placa,t.mun,CAT_NAME[p.cat]||p.cat,p.at?fmtDate(p.at):'','']);
+        row.alignment={vertical:'top'}; row.eachCell({includeEmpty:true},x=>{x.border=border});
+        try{
+          const d=await photoData(p.id,640);
+          const W=270, H=Math.round(W*d.h/d.w);
+          row.height=Math.round(H*0.75)+8;
+          const imgId=wb.addImage({base64:d.data,extension:'jpeg'});
+          fs.addImage(imgId,{tl:{col:4.05,row:row.number-1+0.05},ext:{width:W,height:H}});
+        }catch(e){row.getCell(5).value='Foto indisponível'}
+      }
+    }
+  }
+  prog('Montando arquivo…');
+  const buf=await wb.xlsx.writeBuffer();
+  return saveFile(`vistoria-trafos_${stamp()}.xlsx`,buf,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
+/* ----- PDF ----- */
+const PC={accent:[15,92,99],fg:[23,32,30],muted:[91,105,101],line:[211,219,216],soft:[220,235,236],
+  apto:[[221,241,227],[29,122,62]],inapto:[[251,227,225],[179,38,30]],revisar:[[251,239,214],[154,98,0]],pendente:[[232,236,235],[91,105,101]]};
+async function exportPdf(list,opt,prog){
+  prog('Carregando gerador de PDF…'); await loadLib('pdf');
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'mm',format:'a4'});
+  const AT=(o)=>doc.autoTable?doc.autoTable(o):window.autoTable(doc,o);
+  const W=210, M=14, CW=W-2*M, PH=297;
+  const chip=(x,y,s)=>{const [bg,fg]=PC[s];const txt=STATUS[s].toUpperCase();doc.setFont('helvetica','bold');doc.setFontSize(8);const w=doc.getTextWidth(txt)+6;doc.setFillColor(...bg);doc.roundedRect(x,y-4.2,w,6,3,3,'F');doc.setTextColor(...fg);doc.text(txt,x+3,y);return w};
+  const band=(title,sub)=>{doc.setFillColor(...PC.accent);doc.rect(0,0,W,24,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text(title,M,11);doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text(sub,M,18)};
+  const vist=list.filter(t=>vistorias[t.id]);
+
+  if(!opt.single){
+    band('Relatório de Vistoria de Trafos','Medição fiscal  |  gerado em '+nowBR()+'  |  '+list.length+' trafo(s)');
+    const c=countBy(list);
+    const boxes=[['Trafos',c.total,'pendente'],['Pendentes',c.pendente,'pendente'],['Aptos',c.apto,'apto'],['Não aptos',c.inapto,'inapto'],['Revisar',c.revisar,'revisar']];
+    const bw=(CW-4*3)/5;
+    boxes.forEach(([l,n,s],i)=>{const x=M+i*(bw+3);const [bg,fg]=PC[s];doc.setFillColor(...(i===0?PC.soft:bg));doc.roundedRect(x,30,bw,18,2,2,'F');doc.setTextColor(...(i===0?PC.accent:fg));doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text(String(n),x+4,40);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.text(l,x+4,45)});
+    AT({startY:54,margin:{left:M,right:M},head:[['Placa','Município','Subestação','Situação','Prospector','Data']],
+      body:list.map(t=>{const v=vistorias[t.id]||{};return [t.placa,t.mun,t.se,STATUS[statusOf(t)],v.prospector||'-',v.updatedAt?fmtDate(v.updatedAt):'-']}),
+      styles:{fontSize:8,cellPadding:1.8,textColor:PC.fg,lineColor:PC.line,lineWidth:.1},headStyles:{fillColor:PC.accent,textColor:255},
+      columnStyles:{0:{font:'courier',fontStyle:'bold'}},
+      didParseCell:d=>{if(d.section==='body'&&d.column.index===3){const s=statusOf(list[d.row.index]);d.cell.styles.fillColor=PC[s][0];d.cell.styles.textColor=PC[s][1];d.cell.styles.fontStyle='bold'}}});
+    if(!vist.length){doc.setTextColor(...PC.muted);doc.setFontSize(10);doc.text('Nenhum trafo deste relatório foi vistoriado ainda.',M,doc.lastAutoTable.finalY+10)}
+  }
+
+  for(let i=0;i<vist.length;i++){
+    const t=vist[i], v=vistorias[t.id], s=statusOf(t);
+    prog(`Montando PDF… trafo ${i+1} de ${vist.length}`);
+    if(i>0||!opt.single) doc.addPage();
+    band('Trafo '+t.placa, t.mun+'  |  SE '+t.se+(opt.single?'  |  gerado em '+nowBR():''));
+    doc.setFontSize(9);doc.setTextColor(...PC.muted);doc.setFont('helvetica','normal');
+    doc.text('Situação:',M,32); chip(M+doc.getTextWidth('Situação:')+3,32,s);
+    doc.setTextColor(...PC.accent); doc.textWithLink('Abrir localização no Google Maps',W-M-doc.getTextWidth('Abrir localização no Google Maps'),32,{url:t.maps});
+    const red=[];
+    const rows=[
+      ['Placa de referência',t.placa],
+      ['Tem placa de identificação?',YN(v.temPlaca)],
+      ...(v.temPlaca==='sim'?[['Placa em campo confere?',YN(v.placaConfere)]]:[]),
+      ...(v.placaConfere==='nao'?[['Placa encontrada em campo',v.placaCampo||'-']]:[]),
+      ['Mais de 20 clientes no circuito?',YN(v.mais20)+(v.qtdClientes?'  (aprox. '+v.qtdClientes+')':'')],
+      ['Já existe medição fiscal?',YN(v.medicao)],
+      ...(v.medicao==='sim'?[['Número do medidor',v.medidor||'-']]:[]),
+      ['Avaria no trafo?',YN(v.avaria)],...(v.avaria==='sim'?[['Descrição da avaria',v.avariaDesc||'-']]:[]),
+      ['Defeito no trafo?',YN(v.defeito)],...(v.defeito==='sim'?[['Descrição do defeito',v.defeitoDesc||'-']]:[]),
+      ['Área de gambiarra?',YN(v.gambiarra)],['Área rural?',YN(v.rural)],
+      ['Observações extras',v.obs||'-'],['Prospector',v.prospector||'-'],['Data da vistoria',fmtDate(v.updatedAt)],
+      ['Parecer',STATUS[s]],['Fotos anexadas',String((v.photos||[]).length)]
+    ];
+    rows.forEach((r,k)=>{if((r[0].startsWith('Tem placa')||r[0].startsWith('Placa em campo'))&&r[1]==='Não'||(/^(Avaria|Defeito|Área de gambiarra)/.test(r[0])&&r[1]==='Sim'))red.push(k)});
+    AT({startY:38,margin:{left:M,right:M},body:rows,theme:'grid',
+      styles:{fontSize:9,cellPadding:2,textColor:PC.fg,lineColor:PC.line,lineWidth:.1,valign:'top'},
+      columnStyles:{0:{cellWidth:62,fillColor:[243,245,244],fontStyle:'bold',textColor:PC.muted}},
+      didParseCell:d=>{if(d.column.index===1&&red.includes(d.row.index)){d.cell.styles.textColor=PC.inapto[1];d.cell.styles.fontStyle='bold'}
+        if(d.column.index===1&&d.row.index===rows.length-2){d.cell.styles.fillColor=PC[s][0];d.cell.styles.textColor=PC[s][1];d.cell.styles.fontStyle='bold'}
+        if(d.column.index===1&&d.row.index===0){d.cell.styles.font='courier';d.cell.styles.fontStyle='bold'}}});
+    let y=doc.lastAutoTable.finalY+8;
+
+    if(opt.fotos&&(v.photos||[]).length){
+      const gap=4, pw=(CW-gap)/2, maxH=95;
+      for(const cat of PHOTO_CATS){
+        const ps=v.photos.filter(p=>p.cat===cat.k); if(!ps.length) continue;
+        const est=Math.max(...ps.slice(0,2).map(p=>p.w&&p.h?Math.min(maxH,pw*p.h/p.w):maxH));
+        if(y+6+est>PH-14){doc.addPage();y=16}
+        doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...PC.accent);doc.text(cat.t.toUpperCase(),M,y);y+=4;
+        for(let j=0;j<ps.length;j+=2){
+          const pair=ps.slice(j,j+2); const imgs=[];
+          for(const p of pair){try{imgs.push(await photoData(p.id,1400))}catch(e){imgs.push(null)}}
+          const hs=imgs.map(d=>d?Math.min(maxH,pw*d.h/d.w):20); const rowH=Math.max(...hs);
+          if(y+rowH>PH-14){doc.addPage();y=16}
+          imgs.forEach((d,k)=>{const x=M+k*(pw+gap);
+            if(d){const h=hs[k],w=Math.min(pw,h*d.w/d.h);doc.addImage(d.data,'JPEG',x+(pw-w)/2,y,w,h,undefined,'FAST');doc.setDrawColor(...PC.line);doc.rect(x+(pw-w)/2,y,w,h)}
+            else{doc.setDrawColor(...PC.line);doc.rect(x,y,pw,20);doc.setFontSize(8);doc.setTextColor(...PC.muted);doc.setFont('helvetica','normal');doc.text('Foto indisponível',x+4,y+11)}});
+          y+=rowH+gap;
+        }
+        y+=3;
+      }
+    }
+  }
+  const n=doc.getNumberOfPages();
+  for(let p=1;p<=n;p++){doc.setPage(p);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...PC.muted);doc.text('Vistoria de Trafos  |  Medição fiscal',M,PH-7);doc.text(`Página ${p} de ${n}`,W-M,PH-7,{align:'right'})}
+  prog('Montando arquivo…');
+  const name=opt.single?`vistoria-trafo-${list[0].placa}_${stamp()}.pdf`:`relatorio-vistoria-trafos_${stamp()}.pdf`;
+  return saveFile(name,doc.output('arraybuffer'),'application/pdf');
+}
+
+/* ----- painel ----- */
+$('#exportBtn').addEventListener('click',()=>{const p=$('#exportPanel');p.hidden=!p.hidden;$('#exportBtn').setAttribute('aria-expanded',String(!p.hidden))});
+async function runExport(kind){
+  const list=scopeTrafos(), prog=t=>$('#exportProg').textContent=t;
+  if(!list.length){prog('Nenhum trafo no escopo escolhido.');return}
+  const btns=document.querySelectorAll('#exportPanel .btns button'); btns.forEach(b=>b.disabled=true);
+  const opt={fotos:$('#incFotos').checked};
+  try{
+    const ok = kind==='xlsx'?await exportXlsx(list,opt,prog): kind==='pdf'?await exportPdf(list,opt,prog): await exportCsv(list);
+    prog(ok?'Arquivo gerado.':'Download cancelado.');
+  }catch(e){console.error(e);prog(errMsg(e))}
+  btns.forEach(b=>b.disabled=false);
+}
+$('#xlsxBtn').onclick=()=>runExport('xlsx');
+$('#pdfBtn').onclick=()=>runExport('pdf');
+$('#csvBtn').onclick=()=>runExport('csv');
+$('#lbClose').onclick=()=>$('#lightbox').hidden=true;
+$('#lightbox').onclick=e=>{if(e.target.id==='lightbox')$('#lightbox').hidden=true};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#lightbox').hidden=true});
+
+/* ---------- inicialização ---------- */
+initFilters(); renderList();
+$('#banner').innerHTML=`<div class="banner">Carregando base de trafos…</div>`;
+async function loadAll(){
+  const [tr,vi]=await Promise.all([
+    sb.from('trafos').select('placa,municipio,subestacao,link_maps,ordem').order('ordem',{ascending:true}).order('placa'),
+    sb.from('vistorias').select('*')
+  ]);
+  if(tr.error) throw tr.error; if(vi.error) throw vi.error;
+  TRAFOS=tr.data.map(r=>({placa:r.placa,mun:r.municipio||'',se:r.subestacao||'',maps:r.link_maps||'',id:r.placa}));
+  const next={}; vi.data.forEach(r=>next[r.placa]=fromRow(r)); vistorias=next;
+  $('#nTrafos').textContent=TRAFOS.length;
+  const cur=$('#se').value; initFilterOptions(); $('#se').value=cur;
+  $('#banner').innerHTML=TRAFOS.length?'':`<div class="banner">A tabela de trafos está vazia. Rode o script supabase/schema.sql no Supabase.</div>`;
+  if(!current) renderList(); else renderSummary();
+}
+(async()=>{
+  if(!CFG.SUPABASE_URL||!CFG.SUPABASE_ANON_KEY||/COLE_AQUI/.test(CFG.SUPABASE_URL+CFG.SUPABASE_ANON_KEY)){
+    $('#banner').innerHTML=`<div class="banner">Site ainda não configurado: preencha a URL e a chave do Supabase no arquivo <b>config.js</b> (veja o README).</div>`;return}
+  if(!window.supabase){$('#banner').innerHTML=`<div class="banner">Não foi possível carregar a conexão com o banco. Verifique a internet e recarregue.</div>`;return}
+  sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false}});
+  $('#exportBtn').hidden=false;
+  try{await loadAll()}catch(e){console.error(e);$('#banner').innerHTML=`<div class="banner">Não foi possível carregar os dados do banco. Verifique a internet e recarregue a página.</div>`;return}
+  // atualizações em tempo real de outros prospectores
+  try{sb.channel('vistorias').on('postgres_changes',{event:'*',schema:'public',table:'vistorias'},p=>{
+    const r=p.new; if(r&&r.placa){vistorias[r.placa]=fromRow(r); if(!current) renderList(); else renderSummary()}
+  }).subscribe()}catch(e){}
+  addEventListener('focus',()=>{if(!current) loadAll().catch(()=>{})});
+})();
+</script>
+</body>
+</html>
